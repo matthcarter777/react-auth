@@ -1,14 +1,14 @@
 import { GetServerSideProps, GetServerSidePropsContext, GetServerSidePropsResult } from "next";
 import { parseCookies } from "nookies";
 
-export function withSSRGuest<P>(fn: GetServerSideProps<P>) {
+export function withSSRAuth<P>(fn: GetServerSideProps<P>) {
   return async(ctx: GetServerSidePropsContext): Promise<GetServerSidePropsResult<P>> => {
     const cookies = parseCookies(ctx);
 
-    if(cookies['@ReactAuth.token']) {
+    if(!cookies['@ReactAuth.token']) {
       return {
         redirect: {
-          destination: '/dashboard',
+          destination: '/',
           permanent: false,
         }
       }

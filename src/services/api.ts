@@ -1,82 +1,88 @@
 import axios, { AxiosError } from 'axios';
 import { parseCookies, setCookie } from 'nookies';
+
 import { signOut } from '../hooks/useAuth';
+//import { AuthTokenError } from './errors/AuthTokenError';
 
-let cookies = parseCookies();
 let isRefreshing = false;
-let failedRequestQueue = [];
+let failedRequestsQueue = [];
 
-export const api = axios.create({
-  baseURL: 'http://localhost:3333',
-  headers: {
-    Authorization: `Bearer ${cookies['@ReactAuth.token']}`
-  }
-});
+export function setupAPIClient(ctx = undefined) {
+  let cookies = parseCookies(ctx);
 
-api.interceptors.response.use(response => {
-  return response;
-}, (error: AxiosError) => {
-  if (error.response.status === 401) {
-    if (error.response.data?.code === 'token.expired') {
-      cookies = parseCookies();
+  const api = axios.create({
+    baseURL: 'http://localhost:3333',
+    headers: {
+      Authorization: `Bearer ${cookies['@ReactAuth.token']}`
+    }
+  });
 
-      const { '@ReactAuth.refreshToken': refreshToken } = cookies;
-      const originalConfig = error.config;
+  api.interceptors.response.use(response => {
+    return response;
+  }, (error: AxiosError) => {
+    if (error.response.status === 401) {
+      if (error.response.data?.code === 'token.expired') {
+        cookies = parseCookies(ctx);
 
-      if (!isRefreshing) {
-        isRefreshing = true;
+        const { '@ReactAuth.refreshToken': refreshToken } = cookies;
+        const originalConfig = error.config;
 
-        api.post('/refresh', {
-          refreshToken,
-        }).then(response => {
-          const { token } = response.data;
-  
-          setCookie(
-            undefined,
-            '@ReactAuth.token',
-            token, {
-              maxAge: 60 * 60 * 24 * 30, //30 days,
+        if (!isRefreshing) {
+          isRefreshing = true;
+
+          api.post('/refresh', {
+            refreshToken
+          }).then(response => {
+            const { token } = response.data;
+
+            setCookie(ctx, '@ReactAuth.token', token, {
+              maxAge: 60 * 60 * 24 * 30,
               path: '/'
-            }
-          )
-    
-          setCookie(
-            undefined,
-            '@ReactAuth.refreshToken',
-            response.data.refreshToken, {
-              maxAge: 60 * 60 * 24 * 30, //30 days,
-              path: '/'
-            }
-          )
-  
-          api.defaults.headers['Authorization'] = `Bearer ${token}`;
+            });
 
-          failedRequestQueue.forEach(request => request.resolve(token));
-          failedRequestQueue = [];
-        }).catch(err => {
-          failedRequestQueue.forEach(request => request.reject(err));
-          failedRequestQueue = [];
-        }).finally(() => {
-          isRefreshing = false;
-        });
-      } else {
+            setCookie(ctx, '@ReactAuth.refreshToken', response.data.refreshToken, {
+              maxAge: 60 * 60 * 24 * 30,
+              path: '/'
+            });
+
+            api.defaults.headers['Authorization'] = `Bearer ${token}`;
+
+            failedRequestsQueue.forEach(request => request.resolve(token));
+            failedRequestsQueue = [];
+          }).catch(err => {
+            failedRequestsQueue.forEach(request => request.reject(err));
+            failedRequestsQueue = [];
+
+            if (process.browser) {
+              signOut();
+            }
+          }).finally(() => {
+            isRefreshing = false;
+          });
+        }
+
         return new Promise((resolve, reject) => {
-          failedRequestQueue.push({
+          failedRequestsQueue.push({
             resolve: (token: string) => {
               originalConfig.headers['Authorization'] = `Bearer ${token}`;
-
-              resolve(api(originalConfig))
+              resolve(api(originalConfig));
             },
             reject: (err: AxiosError) => {
-              reject(err)
+              reject(err);
             }
-          })
-        })
+          });
+        });
+      } else {
+        if (process.browser) {
+          signOut();
+        } else {
+          return Promise.reject();
+        }
       }
-    } else {
-      signOut();
     }
-  }
 
-  return Promise.reject(error)
-})
+    return Promise.reject(error);
+  });
+
+  return api;
+}
