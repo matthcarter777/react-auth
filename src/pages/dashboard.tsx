@@ -9,6 +9,7 @@ export default function Dashboard() {
   useEffect(() => {
     api.get('/me')
     .then(response => console.log(response))
+    .catch(err => console.error(err))
   }, [])
 
   return <h1>H3y Y0u, {user?.email}</h1>
