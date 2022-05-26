@@ -3,6 +3,7 @@ import { destroyCookie, parseCookies, setCookie } from "nookies";
 import { useEffect } from "react";
 import { createContext, ReactNode, useContext, useState } from "react"
 
+
 import { api } from "../services/apiClient";
 
 type User = {
@@ -17,7 +18,8 @@ type SignInCredentials = {
 }
 
 type AuthContexData = {
-  signIn(credentials: SignInCredentials): Promise<void>;
+  signIn: (credentials: SignInCredentials) => Promise<void>;
+  signOut: () => void;
   user: User;
   isAuthenticated: boolean;
 }
@@ -28,17 +30,35 @@ type AuthProviderProps = {
 
 const AuthContext = createContext({} as AuthContexData);
 
+let authChannel: BroadcastChannel 
+
 export function signOut() {
 
   destroyCookie(undefined, '@ReactAuth.token');
   destroyCookie(undefined, '@ReactAuth.refreshToken');
 
+  authChannel.postMessage('signOut');
+  
   Router.push('/');
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User>({} as User);
   const isAuthenticated = !!user;
+
+  useEffect(() => {
+    authChannel = new BroadcastChannel('auth');
+
+    authChannel.onmessage = (message) => {
+      switch (message.data) {
+        case 'signOut':
+          signOut();
+          break;
+        default:
+          break;
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const { '@ReactAuth.token': token } = parseCookies();
@@ -103,7 +123,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       value={{
         isAuthenticated,
         user,
-        signIn
+        signIn,
+        signOut
       }}
     >
       { children }
